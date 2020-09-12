@@ -13,7 +13,7 @@ export const ISO8601_DATE_REGEX =
 //    1        2       3         4          5          6          7          8  9     10      11
 const NAMED_FORMATS: {[localeId: string]: {[format: string]: string}} = {};
 const DATE_FORMATS_SPLIT =
-    /((?:[^GyMLwWdEabBhHmsSzZO']+)|(?:'(?:[^']|'')*')|(?:G{1,5}|y{1,4}|M{1,5}|L{1,5}|w{1,2}|W{1}|d{1,2}|E{1,6}|a{1,5}|b{1,5}|B{1,5}|h{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}|z{1,4}|Z{1,5}|O{1,4}))([\s\S]*)/;
+    /((?:[^GyrMLwWdEabBhHmsSzZO']+)|(?:'(?:[^']|'')*')|(?:G{1,5}|y{1,4}|r{1,4}|M{1,5}|L{1,5}|w{1,2}|W{1}|d{1,2}|E{1,6}|a{1,5}|b{1,5}|B{1,5}|h{1,2}|H{1,2}|m{1,2}|s{1,2}|S{1,3}|z{1,4}|Z{1,5}|O{1,4}))([\s\S]*)/;
 
 enum ZoneWidth {
   Short,
@@ -360,7 +360,9 @@ function timeZoneGetter(width: ZoneWidth): DateFormatter {
 }
 
 const JANUARY = 0;
+const SUNDAY = 0;
 const THURSDAY = 4;
+
 function getFirstThursdayOfYear(year: number) {
   const firstDayOfYear = (new Date(year, JANUARY, 1)).getDay();
   return new Date(
@@ -371,6 +373,19 @@ function getThursdayThisWeek(datetime: Date) {
   return new Date(
       datetime.getFullYear(), datetime.getMonth(),
       datetime.getDate() + (THURSDAY - datetime.getDay()));
+}
+
+/**
+ * Gets Thursday of this ISO week. An ISO week starts on Monday. For a Sunday, Thursday in
+ * the ISO week would be the one gone by, instead of the one coming ahead.
+ */
+function getThisISOWeekThursday(datetime: Date) {
+  const day = datetime.getDay();
+  let daysToThursday = (THURSDAY - day);
+  if (day === SUNDAY) {
+    daysToThursday = daysToThursday - 7;
+  }
+  return new Date(datetime.getFullYear(), datetime.getMonth(), datetime.getDate() + daysToThursday);
 }
 
 function weekGetter(size: number, monthBased = false): DateFormatter {
@@ -391,6 +406,18 @@ function weekGetter(size: number, monthBased = false): DateFormatter {
     }
 
     return padNumber(result, size, getLocaleNumberSymbol(locale, NumberSymbol.MinusSign));
+  };
+}
+
+/**
+ * Returns a date formatter that provides ISO 8601-compliant week-numbering year for the input date.
+ */
+function weekNumberingYearGetter(size: number, trim = false): DateFormatter {
+  return function(date: Date, locale: string) {
+    const thisThurs = getThisISOWeekThursday(date);
+    const weekNumberingYear = thisThurs.getFullYear();
+    return padNumber(
+        weekNumberingYear, size, getLocaleNumberSymbol(locale, NumberSymbol.MinusSign), trim);
   };
 }
 
@@ -436,6 +463,25 @@ function getDateFormatter(format: string): DateFormatter|null {
     // 4 digit representation of the year (e.g. AD 1 => 0001, AD 2010 => 2010)
     case 'yyyy':
       formatter = dateGetter(DateType.FullYear, 4, 0, false, true);
+      break;
+
+    // 1 digit representation of the week-numbering year, e.g. (AD 1 => 1, AD 199 => 199)
+    case 'r':
+      formatter = weekNumberingYearGetter(1);
+      break;
+    // 2 digit representation of the week-numbering year, padded (00-99). (e.g. AD 2001 => 01, AD
+    // 2010 => 10)
+    case 'rr':
+      formatter = weekNumberingYearGetter(2, true);
+      break;
+    // 3 digit representation of the week-numbering year, padded (000-999). (e.g. AD 1 => 001, AD
+    // 2010 => 2010)
+    case 'rrr':
+      formatter = weekNumberingYearGetter(3);
+      break;
+    // 4 digit representation of the week-numbering year (e.g. AD 1 => 0001, AD 2010 => 2010)
+    case 'rrrr':
+      formatter = weekNumberingYearGetter(4);
       break;
 
     // Month of the year (1-12), numeric
